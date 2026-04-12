@@ -7,7 +7,6 @@ LGFX gfx;
 // 320 × 30 rows × 2 bytes = 19,200 bytes each → ~38 KB total.
 static lv_disp_draw_buf_t s_draw_buf;
 static lv_color_t         s_buf1[DISP_WIDTH * LVGL_BUF_LINES];
-static lv_color_t         s_buf2[DISP_WIDTH * LVGL_BUF_LINES];
 
 // ── LVGL flush callback ───────────────────────────────────────────────────
 // Called by LVGL when a rectangular region is ready to be pushed to the LCD.
@@ -45,7 +44,7 @@ void display_init() {
 
     lv_init();
 
-    lv_disp_draw_buf_init(&s_draw_buf, s_buf1, s_buf2, DISP_WIDTH * LVGL_BUF_LINES);
+    lv_disp_draw_buf_init(&s_draw_buf, s_buf1, nullptr, DISP_WIDTH * LVGL_BUF_LINES);
 
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);

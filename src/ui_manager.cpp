@@ -198,7 +198,7 @@ static void build_main_screen() {
     lv_obj_add_event_cb(btn_power, on_power_btn_click, LV_EVENT_CLICKED, nullptr);
 
     lbl_power = lv_label_create(btn_power);
-    lv_obj_set_style_text_font(lbl_power, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl_power, &lv_font_montserrat_14, 0);
     lv_obj_center(lbl_power);
     apply_power_style(false);   // default until BLE state arrives
 
