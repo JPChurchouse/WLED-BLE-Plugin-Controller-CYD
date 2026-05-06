@@ -19,7 +19,7 @@
  *====================*/
 /* LVGL internal heap — drawn from ESP32 DRAM (no PSRAM on CYD)             */
 #define LV_MEM_CUSTOM   0
-#define LV_MEM_SIZE    (16U * 1024U)    /* 32 KB — plenty for this UI        */
+#define LV_MEM_SIZE    (32U * 1024U)    /* 32 KB — plenty for this UI        */
 #define LV_MEM_ADR      0               /* 0 = let LVGL pick                 */
 
 /*====================

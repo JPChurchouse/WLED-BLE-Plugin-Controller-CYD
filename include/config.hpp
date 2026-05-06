@@ -45,4 +45,4 @@ constexpr int LED_B =  4;
 // ── LVGL draw buffer ─────────────────────────────────────────────────────
 constexpr int DISP_WIDTH    = 320;
 constexpr int DISP_HEIGHT   = 240;
-constexpr int LVGL_BUF_LINES = 10;  // double-buffered: 2 × (320 × 30 × 2) = ~38 KB
+constexpr int LVGL_BUF_LINES = 30;  // double-buffered: 2 × (320 × 30 × 2) = ~38 KB
