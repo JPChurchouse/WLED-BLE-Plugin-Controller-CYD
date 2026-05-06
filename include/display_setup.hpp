@@ -1,16 +1,23 @@
 #pragma once
 
-// LovyanGFX must be included before lvgl so the display driver is ready
-// when LVGL calls the flush callback.
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include "config.hpp"
 
-// ── CYD display/touch driver class ───────────────────────────────────────
-// Two separate SPI buses are used:
-//   SPI2 (HSPI) — ILI9341 display: CLK=14, MOSI=13, MISO=12
-//   SPI3 (VSPI) — XPT2046 touch:   CLK=25, MOSI=32, MISO=39
-// Both are driven by LovyanGFX simultaneously without bus contention.
+/*
+ * ESP32-2432S028R (CYD) confirmed pin mapping
+ * -------------------------------------------
+ * Display ILI9341 — SPI2 (HSPI) — native ESP32 HSPI pins, no GPIO matrix routing
+ *   MOSI=13  MISO=NC  SCLK=14  CS=15  DC=2  BL=21
+ *   MISO is not connected to the display on this board revision.
+ *   Setting it -1 prevents LovyanGFX from attempting read-back.
+ *
+ * Touch XPT2046 — SPI3 (VSPI) — routed through GPIO matrix
+ *   MOSI=32  MISO=39  SCLK=25  CS=33  IRQ=36
+ *
+ * Both buses are independent — bus_shared=false on both sides.
+ */
+
 class LGFX : public lgfx::LGFX_Device {
     lgfx::Panel_ILI9341  _panel;
     lgfx::Bus_SPI        _display_bus;
@@ -19,82 +26,83 @@ class LGFX : public lgfx::LGFX_Device {
 
 public:
     LGFX() {
-        // ── Display SPI bus ──────────────────────────────────────────────
+        // ── Display SPI bus (SPI2 / HSPI) ────────────────────────────────
         {
-            auto cfg = _display_bus.config();
-            // SPI2_HOST = 1 (HSPI). If this symbol isn't found on your
-            // toolchain, replace with the integer literal 1.
-            cfg.spi_host    = SPI2_HOST;
-            cfg.spi_mode    = 0;
-            cfg.freq_write  = 40000000;
-            cfg.freq_read   = 16000000;
-            cfg.spi_3wire   = false;
-            cfg.use_lock    = true;
-            cfg.dma_channel = SPI_DMA_CH_AUTO;
-            cfg.pin_sclk    = TFT_CLK;
-            cfg.pin_mosi    = TFT_MOSI;
-            cfg.pin_miso    = TFT_MISO;
-            cfg.pin_dc      = TFT_DC;
+            auto cfg         = _display_bus.config();
+            cfg.spi_host     = SPI2_HOST;   // HSPI — native pins, no matrix
+            cfg.spi_mode     = 0;
+            cfg.freq_write   = 27000000;    // ILI9341 datasheet max for write
+            cfg.freq_read    = 8000000;
+            cfg.spi_3wire    = false;       // separate DC pin = 4-wire
+            cfg.use_lock     = true;
+            cfg.dma_channel  = SPI_DMA_CH_AUTO;
+            cfg.pin_sclk     = TFT_CLK;    // 14
+            cfg.pin_mosi     = TFT_MOSI;   // 13
+            cfg.pin_miso     = -1;         // not connected on this board
+            cfg.pin_dc       = TFT_DC;     // 2
             _display_bus.config(cfg);
             _panel.setBus(&_display_bus);
         }
-        // ── Panel ────────────────────────────────────────────────────────
+
+        // ── Panel ─────────────────────────────────────────────────────────
         {
-            auto cfg = _panel.config();
-            cfg.pin_cs           = TFT_CS;
-            cfg.pin_rst          = -1;       // tied to EN/3V3
+            auto cfg             = _panel.config();
+            cfg.pin_cs           = TFT_CS;   // 15
+            cfg.pin_rst          = -1;
             cfg.pin_busy         = -1;
-            cfg.panel_width      = 240;      // physical portrait short edge
-            cfg.panel_height     = 320;      // physical portrait long edge
+            cfg.memory_width     = 240;       // ILI9341 GRAM is 240 wide
+            cfg.memory_height    = 320;       // ILI9341 GRAM is 320 tall
+            cfg.panel_width      = 240;
+            cfg.panel_height     = 320;
             cfg.offset_x         = 0;
             cfg.offset_y         = 0;
-            cfg.offset_rotation  = 0;
+            cfg.offset_rotation  = 0;         // physical origin — setRotation(1)
+                                               // below gives landscape
             cfg.dummy_read_pixel = 8;
             cfg.dummy_read_bits  = 1;
-            cfg.readable         = true;
+            cfg.readable         = false;     // MISO not connected
             cfg.invert           = false;
             cfg.rgb_order        = false;
             cfg.dlen_16bit       = false;
-            cfg.bus_shared       = false;
+            cfg.bus_shared       = false;     // touch is on a completely separate bus
             _panel.config(cfg);
         }
-        // ── Backlight ────────────────────────────────────────────────────
+
+        // ── Backlight ─────────────────────────────────────────────────────
         {
-            auto cfg = _backlight.config();
-            cfg.pin_bl      = TFT_BL;
-            cfg.invert      = false;         // HIGH = on (via NPN transistor)
+            auto cfg        = _backlight.config();
+            cfg.pin_bl      = TFT_BL;     // 21
+            cfg.invert      = false;       // HIGH = backlight on
             cfg.freq        = 44100;
             cfg.pwm_channel = 7;
             _backlight.config(cfg);
             _panel.setLight(&_backlight);
         }
-        // ── Touch ────────────────────────────────────────────────────────
+
+        // ── Touch (SPI3 / VSPI) ───────────────────────────────────────────
         {
-            auto cfg = _touch.config();
-            cfg.x_min           = TOUCH_X_MIN;
-            cfg.x_max           = TOUCH_X_MAX;
-            cfg.y_min           = TOUCH_Y_MIN;
-            cfg.y_max           = TOUCH_Y_MAX;
-            cfg.pin_int         = TCH_IRQ;
-            cfg.bus_shared      = false;     // dedicated SPI bus
-            cfg.offset_rotation = 0;
-            // SPI3_HOST = 2 (VSPI). Replace with 2 if symbol undefined.
-            cfg.spi_host        = SPI3_HOST;
-            cfg.freq            = 2500000;
-            cfg.pin_sclk        = TCH_CLK;
-            cfg.pin_mosi        = TCH_MOSI;
-            cfg.pin_miso        = TCH_MISO;
-            cfg.pin_cs          = TCH_CS;
+            auto cfg             = _touch.config();
+            // Raw ADC calibration limits — update after calibration sketch
+            cfg.x_min            = TOUCH_X_MIN;
+            cfg.x_max            = TOUCH_X_MAX;
+            cfg.y_min            = TOUCH_Y_MIN;
+            cfg.y_max            = TOUCH_Y_MAX;
+            cfg.pin_int          = TCH_IRQ;   // 36
+            cfg.bus_shared       = false;     // dedicated SPI3 bus
+            cfg.offset_rotation  = 0;
+            cfg.spi_host         = SPI3_HOST; // VSPI — GPIO matrix routed
+            cfg.freq             = 2500000;
+            cfg.pin_sclk         = TCH_CLK;   // 25
+            cfg.pin_mosi         = TCH_MOSI;  // 32
+            cfg.pin_miso         = TCH_MISO;  // 39
+            cfg.pin_cs           = TCH_CS;    // 33
             _touch.config(cfg);
             _panel.setTouch(&_touch);
         }
+
         setPanel(&_panel);
     }
 };
 
-// Global display object — defined in display_setup.cpp, used in flush CB
 extern LGFX gfx;
-
-// Initialises LovyanGFX + LVGL display/input drivers.
-// Call once before any lv_* calls.
 void display_init();

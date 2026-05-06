@@ -6,36 +6,34 @@
 #include "ui_manager.hpp"
 #include <lvgl.h>
 
-// Arduino loop() runs on core 1 — LVGL and UI live here.
-// The BLE management task is pinned to core 0 (see ble_client.cpp).
-
-static uint32_t s_lastTickMs = 0;
+static uint32_t  s_lastTickMs = 0;
 static BLEStatus s_prevStatus = BLEStatus::IDLE;
 
-void setup() {
+void setup()
+{
     Serial.begin(115200);
     Serial.println("\n[MAIN] Boot");
 
     rgb_led_init();
-    rgb_led_set(LedColor::BLUE);   // visual indication: scanning
+    rgb_led_set(LedColor::BLUE);
 
-    display_init();                // LovyanGFX + LVGL driver registration
-    ui_init();                     // build LVGL screens
+    display_init();
+    ui_init();
 
-    // Small yield so LVGL renders the connecting screen before BLE starts
-    lv_task_handler();
-    delay(50);
+    // Force LVGL to repaint every pixel on the connecting screen right now.
+    // lv_scr_load() marks the screen dirty but does not flush immediately;
+    // lv_refr_now() blocks until the full screen has been pushed to the panel.
+    // This overwrites any GRAM content left by previous firmware.
+    lv_refr_now(lv_disp_get_default());
 
-    ble_init();                    // spawns ble_task on core 0, begins scan
+    ble_init();
 
     s_lastTickMs = millis();
     Serial.println("[MAIN] Setup complete");
 }
 
-void loop() {
-    // ── LVGL tick source ──────────────────────────────────────────────────
-    // lv_tick_inc() must be called every millisecond (or in chunks).
-    // We accumulate elapsed ms and pass the delta each iteration.
+void loop()
+{
     uint32_t now     = millis();
     uint32_t elapsed = now - s_lastTickMs;
     if (elapsed > 0) {
@@ -43,14 +41,10 @@ void loop() {
         s_lastTickMs = now;
     }
 
-    // ── LVGL timer handler ────────────────────────────────────────────────
-    // Processes animations, input events, and triggers flush callbacks.
     lv_timer_handler();
-
-    // ── BLE → UI bridge ───────────────────────────────────────────────────
     ui_apply_updates();
 
-    // ── RGB LED status ────────────────────────────────────────────────────
+    // RGB LED status indicator
     BLEStatus st = BLEStatus::IDLE;
     if (xSemaphoreTake(g_ble.mutex, 0) == pdTRUE) {
         st = g_ble.status;
@@ -67,8 +61,5 @@ void loop() {
         }
     }
 
-    // ── Yield ─────────────────────────────────────────────────────────────
-    // 5 ms gives ~200 Hz loop rate. lv_timer_handler() already has internal
-    // rate limiting so this just prevents busy-spinning on the idle RTOS tick.
     delay(5);
 }
